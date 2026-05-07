@@ -229,14 +229,7 @@ Create a `.env` file (or use secrets in Streamlit Cloud):
 GROQ_API_KEY=your_api_key_here
 ```
 
-### Session State Management
 
-The app maintains:
-- Chat message history
-- Uploaded DataFrame
-- Data context and statistics
-- Outlier reports
-- Profile cards
 
 ## 🐛 Troubleshooting
 
@@ -261,13 +254,3 @@ The app maintains:
 - **groq** — Groq API client
 - **numpy/scipy** — Statistical operations
 
-
-
-For issues, feature requests, or questions:
-1. Check existing GitHub issues
-2. Create a new issue with detailed description
-3. Include sample data (if possible) to reproduce bugs
-
----
-
-Built with ❤️ using Streamlit, Groq, and Pandas
