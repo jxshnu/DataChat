@@ -1,256 +1,186 @@
-```markdown
-# Grounded Sheet Q&A
+# DataChat: Grounded Sheet Q&A
 
-Query CSV and Excel datasets using natural language while eliminating hallucinations. This application is powered by the Groq API to provide high-performance inference and diverse model selection.
-
----
+DataChat provides an interface to query CSV and Excel data using natural language while ensuring factual, reproducible answers through code generation and execution.
 
 ## Core Features
 
-*   **Fully Grounded Responses:** Every response is backed by actual data values. The LLM does not invent or estimate data.
-*   **Outlier Detection:** Automatically identifies and flags statistical outliers utilizing the Interquartile Range (IQR) method.
-*   **Multi-Model Support:** Configure the system to use either cloud-based Groq models or local Ollama deployments for strict data privacy.
-*   **Live Code Generation:** The LLM generates and executes Pandas code against the provided DataFrame to ensure maximum mathematical accuracy.
-*   **High Performance Inference:** Groq's inference API delivers sub-second response times for code generation and analysis.
-
----
+- 100% grounded answers: Every response is derived from executed code against the source dataset.
+- Outlier detection: Identifies and annotates statistical outliers using the interquartile range (IQR) method.
+- Multi-model support: Select cloud-based Groq models or a locally hosted Ollama instance for private inference.
+- Code generation and execution: The system generates Pandas code to answer queries and executes it against the DataFrame to produce results.
+- Deterministic output: Model temperature is configured for deterministic responses where possible.
 
 ## Primary Use Cases
 
-**DataChat is engineered for the following applications:**
-*   Analyzing CSV and Excel spreadsheets via natural language queries.
-*   Financial data analysis (e.g., sales, revenue, budget tracking).
-*   Business intelligence operations on structured datasets.
-*   Data exploration for non-technical users without SQL proficiency.
-*   Fact-based reporting where precision and accuracy are strictly required.
+DataChat is intended for scenarios that require precise, auditable answers from structured tabular data, including:
 
-**Out of Scope:**
-*   Unstructured document or PDF analysis.
-*   News or long-form content summarization.
-*   Image processing and computer vision tasks.
-*   Semantic document search.
+- Analysis of CSV or Excel spreadsheets using natural language queries.
+- Financial and operational reporting (sales, revenue, budgets, forecasting validation).
+- Business intelligence and exploratory data analysis for structured datasets.
+- Enabling non-technical users to perform data analysis without SQL knowledge.
 
----
+The system is not designed for unstructured document analysis, image processing, or multimedia retrieval.
 
-## Architectural Advantages
+## Advantages Compared to Retrieval-Based Architectures
 
-### vs. Retrieval-Augmented Generation (RAG)
-| Feature | DataChat | Standard RAG |
-|---------|----------|-----|
-| **Hallucination Risk** | Impossible | High |
-| **Numerical Accuracy** | 100% | Unreliable |
-| **Aggregations** | Supported | Unsupported across chunks |
-| **Infrastructure Cost**| Low (No Vector DB) | High |
-| **Setup Complexity** | Simple | Complex |
-| **Optimal Data Size** | < 500MB | Unlimited |
+### Versus retrieval-augmented generation (RAG) / vector databases
 
-### vs. Text-to-SQL Generation
-| Feature | DataChat | SQL Generation |
-|---------|----------|---------|
-| **Error Recovery** | Supported via retries | Difficult to automate |
-| **Schema Exposure** | Abstracted | Fully Exposed |
-| **Security Risk** | Secure (Local Execution) | Susceptible to SQL Injection |
-| **User Experience** | Accessible | Often requires SQL debugging |
+| Feature | DataChat | RAG / Vector DB |
+|---|---:|:---|
+| Hallucination risk | None (answers are executed) | High (synthesis from retrieved context) |
+| Numerical accuracy and aggregations | High (native computation) | Low (retrieved snippets may not aggregate correctly) |
+| Infrastructure complexity | Low (no vector DB required) | High (embeddings and index management) |
+| Suitable data types | Structured tabular data | Unstructured text, documents, multimedia |
 
-### vs. Direct LLM Prompting
-| Feature | DataChat | Direct LLM |
-|---------|----------|-----------|
-| **Factual Accuracy** | 100% | Prone to hallucinations |
-| **Reliability** | Deterministic | Stochastic |
-| **Verifiability** | High (Code is visible) | Low |
+### Versus SQL generation against a database
 
----
+| Feature | DataChat | SQL generation |
+|---|---:|:---|
+| Exposure of schema | Controlled (schema summarized for prompt) | Exposes full schema to generator |
+| Error recovery | Retries and result validation built-in | Can be brittle; SQL errors may require manual fixes |
+| User accessibility | High for non-technical users | Lower without SQL knowledge |
 
-## Disadvantages & Limitations
+### Versus direct LLM answers without grounding
 
-### Technical Limitations
-1.  **Structured Data Only:** Cannot process unstructured formats like PDFs, Word documents, or images.
-2.  **Code Generation Failures:** The LLM may occasionally write invalid Pandas syntax, necessitating automated retries.
-3.  **Execution Latency:** Local code execution adds approximately 500ms to 2s of overhead compared to direct retrieval.
-4.  **Context Window Constraints:** Extremely wide datasets cannot have their full statistical profiles passed into the standard context window.
-5.  **Lack of Semantic Search:** Queries must align with the structural naming conventions of the data; it cannot search purely by conceptual meaning.
+Direct LLM responses can be fluent but are prone to errors and fabrications when precise, factual answers are required. DataChat reduces that risk by executing code that produces the underlying results.
 
-### Scale Limitations
-| Metric | Supported Capacity |
-|--------|----------|
-| **File Size** | < 500MB (Practical limit for Pandas) |
-| **Row Count** | < 10 million (Requires pagination/chunking for larger sets) |
-| **Column Count** | < 1000 |
-| **Concurrency** | Bound by active LLM API rate limits |
+## Limitations and Trade-offs
 
-### Cost Considerations
-*   Eliminates standard vector database infrastructure costs.
-*   Incurs per-query API costs (e.g., Groq API pricing).
-*   Automated code-retry attempts will multiply token consumption per query.
+### Technical constraints
 
-### User Experience Implications
-1.  **Response Time:** Marginally slower than direct vector retrieval or indexed database queries.
-2.  **Debugging Complexity:** Errors stemming from generated Pandas code can be complex for non-technical users to diagnose.
-3.  **Complex Data Types:** May struggle with heavily nested JSON or highly denormalized data structures within CSVs.
+1. The architecture is optimized for structured, tabular data; it does not perform semantic search or deep language understanding for unstructured documents.
+2. The LLM must generate syntactically correct Pandas code; generation failures or invalid code may require retries.
+3. Code execution adds latency relative to pure retrieval approaches.
+4. Large datasets that exceed prompt or memory limits require sampling, pagination, or pre-aggregation strategies.
 
----
+### Scale and performance
 
-## Architecture Deep Dive
+| Metric | Practical guideline |
+|---|---:|
+| File size | Recommended under ~500 MB for direct in-memory processing |
+| Rows | Practical with tens of millions if processing is batched, otherwise consider a database backend |
+| Columns | Works well with up to several hundred columns; extremely wide tables may require preprocessing |
 
-**DataChat utilizes a Code-Generation and Execution pipeline:**
-```text
-User Query
-    ↓
-[LLM Context: Schema + Statistical Profile + Query]
-    ↓
-LLM generates Pandas executable code
-    ↓
-Code executes securely against the DataFrame
-    ↓
-[LLM Context: Execution Output (Actual Values)]
-    ↓
-LLM generates natural language synthesis
-```
+### Cost considerations
 
-**Hallucination Prevention Mechanism:**
-*   The model never attempts to recall or synthesize data points directly.
-*   All quantitative results are derived from deterministic code execution.
-*   Identical queries yield identical answers.
-*   Full transparency: The underlying Pandas code is accessible for user auditing.
+- Eliminates vector DB costs but incurs per-query LLM API costs. Invalid code retries increase the number of model calls.
 
----
+## Architecture Overview
 
-## Quick Start Guide
+DataChat uses a code-generation and execution approach:
+
+1. The system summarizes schema and statistics for the dataset and constructs a constrained system prompt.
+2. The LLM generates a short Pandas snippet intended to compute the requested result and assigns the output to a variable (for example, `result`).
+3. The application executes the generated code against the DataFrame in a controlled environment and captures the output.
+4. The output is returned to the LLM for formatting into a human-readable response, and the executed code may be presented to the user for audit.
+
+This approach enforces that numeric and tabular answers are derived directly from computation rather than free-form generation.
+
+## Getting Started
 
 ### Prerequisites
 
-*   Python 3.8 or higher.
-*   A Groq API key (Available at console.groq.com).
-*   Optional: Ollama installed locally for offline inference.
+- Python 3.8 or newer
+- A Groq API key (if using the Groq cloud models) or a local Ollama instance for private inference
 
 ### Installation
+
 ```bash
 # Clone the repository
 git clone <your-repo-url>
-cd llm_sheet
+cd DataChat
 
 # Install dependencies
 pip install -r requirements.txt
 ```
 
-### Execution
+### Run the application
 
 ```bash
 streamlit run app.py
 ```
 
-Navigate to `http://localhost:8501` in your web browser.
+Then open your browser to `http://localhost:8501`.
 
----
+## Project Layout
 
-## Project Structure
-
-```text
-llm_sheet/
-├── app.py                 # Streamlit UI routing and session state management
-├── llm_engine.py          # LLM API handlers and code-generation pipelines
-├── data_processor.py      # I/O operations, statistical profiling, and outlier detection
-├── requirements.txt       # Environment dependencies
-├── README.md              # Project documentation
+```
+DataChat/
+├── app.py                 # Streamlit UI and session management
+├── llm_engine.py          # LLM interaction with code-generation grounding
+├── data_processor.py      # CSV/Excel loading, profiling, outlier detection
+├── requirements.txt       # Python dependencies
+├── README.md              # This file
 └── archive/
-    └── superstore.csv     # Sample dataset for testing and validation
+    └── superstore.csv     # Sample dataset for testing
 ```
 
----
+## Implementation Details
 
-## System Components
+### Data processing (`data_processor.py`)
 
-### Data Processing (`data_processor.py`)
+- File loading: CSV and Excel (.xlsx/.xls) support
+- Schema extraction: column names, inferred data types, null counts
+- Statistical profiling: min, max, mean, median, std, Q1, Q3, IQR for numeric columns
+- Outlier detection: IQR-based flagging
+- Context builder: summary used to constrain the model prompt
 
-*   **File I/O:** Native support for CSV and Excel formats (.xlsx, .xls).
-*   **Schema Extraction:** Dynamic detection of column headers, dtypes, and null distributions.
-*   **Statistical Profiling:** Automated calculation of minimum, maximum, mean, median, standard deviation, Q1, Q3, and IQR for all numeric series.
-*   **Outlier Detection:** Highlights records falling outside the standard distribution curve (`Q1 - 1.5*IQR` to `Q3 + 1.5*IQR`).
-*   **Context Engineering:** Compiles the extracted metadata into a strict prompt template for the LLM.
+### LLM engine (`llm_engine.py`)
 
-### LLM Engine (`llm_engine.py`)
+- The system prompt contains schema, column statistics, and a clear instruction to reason only from provided data.
+- The LLM generates Pandas code constrained to `pandas` and `numpy` operations.
+- Generated code is executed in process; results are validated and returned as the authoritative answer.
 
-*   **System Prompting:** Injects the schema, statistical summaries, outlier flags, and a sample DataFrame head into the context window.
-*   **Execution Sandbox:** Safely executes the generated Pandas code.
-*   **Deterministic Output:** Enforces a temperature of 0.0 to ensure consistent, factual reporting.
+### Streamlit UI (`app.py`)
 
-### User Interface (`app.py`)
+- Controls for model/provider selection, API key input, and file upload
+- Conversation-style interface for issuing queries and reviewing generated code
 
-*   **Sidebar Configuration:** Controls for LLM provider selection, API key management, model toggling, and file uploading.
-*   **Main Dashboard:** Features a conversational interface, data profile metrics, outlier warnings, and an expandable execution log.
+## Available Models
 
----
-
-## Supported Models
-
-### Groq Cloud Models
-
-| Model | Identifier | Optimal Use Case |
-|---|---|---|
-| Llama 3.3 70B | `llama-3.3-70b-versatile` | Highest overall reasoning quality |
-| Mixtral 8x7B | `mixtral-8x7b-32768` | Balanced speed and multi-tasking |
-| Llama 3.1 8B | `llama-3.1-8b-instant` | Lowest latency responses |
-| Gemma 2 9B | `gemma2-9b-it` | Lightweight processing |
-| Llama 4 Scout 17B | `meta-llama/llama-4-scout-17b-16e-instruct` | Advanced logic and reasoning |
-| Qwen3 32B | `qwen/qwen3-32b` | Strong structural understanding |
-
-### Local Models (Ollama)
-
-Ensure the Ollama service is active (`ollama serve`). The application will automatically detect and populate available local models.
-
----
+Supported model identifiers for Groq and local Ollama instances are provided in `llm_engine.py`. Ensure your selected model is available and compatible with the provider you choose.
 
 ## Design Principles
 
-1.  **Factual Determinism:** Grounding via local code execution is mandatory.
-2.  **Statistical Awareness:** Anomalies and outliers must be surfaced automatically to prevent skewed interpretations.
-3.  **Context-Heavy Prompting:** The LLM must be fully aware of the data schema before generating execution paths.
-4.  **Data Sovereignty:** Support for local inference (Ollama) to ensure sensitive data never leaves the host machine.
-5.  **Auditability:** Generated code and intermediate execution outputs are fully transparent.
-
----
+1. Grounded computation: answers are derived by executing code against the dataset.
+2. Outlier awareness: statistical anomalies are surfaced to the user.
+3. Privacy-first options: local inference via Ollama is supported.
+4. Transparency: users can review generated code and execution results.
 
 ## Example Workflow
 
-1.  **Initialization:** Upload a target CSV or Excel file.
-2.  **Query Input:** Submit a prompt (e.g., "Identify the top 5 sales regions by gross revenue.")
-3.  **Processing:** The system generates Pandas code, executes the aggregation, and synthesizes the raw output.
-4.  **Review:** Analyze the natural language response alongside the execution log and any flagged statistical outliers.
+1. Upload a CSV or Excel file.
+2. Ask a question in natural language, for example: "What are the top five regions by revenue?"
+3. The LLM generates Pandas code that computes the result; the application executes it and returns the answer with supporting code and context.
 
----
+## Configuration and Troubleshooting
 
-## Configuration
+### Environment variables
 
-### Environment Variables
+Create a `.env` file or configure secrets for deployment:
 
-Establish a `.env` file in the root directory (or utilize Streamlit Secrets):
-```env
+```
 GROQ_API_KEY=your_api_key_here
 ```
 
----
+### Common issues
 
-## Troubleshooting
-
-**API Key Authentication Errors**
-*   Validate the active Groq API key via the Groq Console.
-*   Ensure the `.env` file is properly formatted and loaded.
-
-**Ollama Connection Timeouts**
-*   Confirm the Ollama background service is running (`ollama serve`).
-*   Verify network access to `localhost:11434`.
-
-**Code Execution Failures**
-*   The LLM may attempt unsupported Pandas operations. The system includes an automated 3-attempt retry logic.
-*   Review the generated code in the UI expander to identify structural errors.
-
----
+- Invalid API key: confirm the key at https://console.groq.com and verify environment configuration.
+- Ollama connection: ensure `ollama serve` is running and accessible when using a local provider.
+- Code execution errors: inspect the generated code and the execution trace; the system will attempt retries for common failure modes.
 
 ## Dependencies
 
-*   **streamlit:** Front-end framework and state management.
-*   **pandas:** Core data manipulation and execution engine.
-*   **openpyxl:** Excel file format support.
-*   **groq:** Official Groq API client.
-*   **numpy / scipy:** Advanced statistical computations.
-```
+- streamlit
+- pandas
+- openpyxl
+- groq (Groq client library)
+- numpy, scipy
+
+## Contributing and Support
+
+For issues or feature requests, please open an issue on GitHub with a clear description and sample data if applicable.
+
+---
+
+Built with Streamlit, Groq, and Pandas.
