@@ -163,24 +163,7 @@ The app maintains:
 - **groq** — Groq API client
 - **numpy/scipy** — Statistical operations
 
-## 🔒 Security Notes
 
-- API keys are **not stored** (use Streamlit secrets for cloud deployment)
-- Data is processed locally in-memory
-- Code execution is restricted to `pandas` and `numpy` only
-
-## 📝 License
-
-MIT License — See LICENSE file for details
-
-## 🤝 Contributing
-
-Pull requests welcome! Please ensure:
-- Code passes linting
-- New features include tests
-- Documentation is updated
-
-## 📞 Support
 
 For issues, feature requests, or questions:
 1. Check existing GitHub issues
